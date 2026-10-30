@@ -23,6 +23,7 @@ import {
   Menu,
   X,
   Megaphone,
+  MapPin,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -63,6 +64,7 @@ const NAV: NavGroup[] = [
       { href: '/admin/coupons', label: 'Coupons', icon: <Ticket size={17} strokeWidth={1.75} /> },
       { href: '/admin/announcements', label: 'Announcements', icon: <Megaphone size={17} strokeWidth={1.75} /> },
       { href: '/admin/orders', label: 'Orders', icon: <Package size={17} strokeWidth={1.75} /> },
+      { href: '/admin/pincodes', label: 'PIN Codes & Shipping', icon: <MapPin size={17} strokeWidth={1.75} /> },
     ],
   },
   {

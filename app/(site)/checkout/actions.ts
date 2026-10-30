@@ -12,6 +12,9 @@ import {
   verifyPaymentSignature,
 } from '@/lib/razorpay'
 import { finalizePaidOrder } from '@/lib/order-payments'
+import { shippingChargeForAddress } from '@/lib/shipping-rates'
+import { payableWithShipping } from '@/lib/shipping-pricing'
+import { reconcileOrderPayment } from '@/lib/payment-reconciliation'
 
 // Errors are returned rather than thrown: Next.js replaces thrown server action
 // messages with a generic one in production, and customers need the real reason.
@@ -33,6 +36,7 @@ type CartRow = {
 export type StartCheckoutInput = {
   addressId: string
   appliedCoupon?: string | null
+  expectedShippingAmount?: number
 }
 
 export type StartCheckoutResult = ActionResult<
@@ -150,7 +154,11 @@ export async function startCheckoutAction(input: StartCheckoutInput): Promise<St
       }
     }
 
-    const total = Math.max(0, subtotal - discountAmount)
+    const shippingAmount = await shippingChargeForAddress(address)
+    if (input.expectedShippingAmount !== shippingAmount) {
+      return { ok: false, error: 'Shipping charges changed. Refresh checkout and review the total before paying.' }
+    }
+    const total = payableWithShipping(subtotal, discountAmount, shippingAmount)
     const amountInPaise = toPaise(total)
     if (amountInPaise > 0 && amountInPaise < 100) {
       return { ok: false, error: 'Order total must be at least ₹1.' }
@@ -165,6 +173,7 @@ export async function startCheckoutAction(input: StartCheckoutInput): Promise<St
         total,
         subtotal,
         discount_amount: discountAmount,
+        shipping_amount: shippingAmount,
         coupon_code: couponCode,
         ship_full_name: address.full_name.trim(),
         ship_phone: address.phone.trim(),
@@ -307,23 +316,34 @@ export async function verifyPaymentAction(input: VerifyPaymentInput): Promise<Ac
 
 /**
  * Called when the customer closes the Razorpay window without paying. The
- * order stays in the database for reference but is hidden from order lists.
+ * provider is checked before changing payment state; dismissal is not failure.
  */
 export async function markPaymentAbandonedAction(orderId: string): Promise<ActionResult<object>> {
   try {
     const user = await getSignedInUser()
     if (!user) return { ok: false, error: 'Please sign in to continue.' }
 
-    await getAdminSupabase()
-      .from('orders')
-      .update({ payment_status: 'failed' })
-      .eq('id', orderId)
-      .eq('user_id', user.id)
-      .eq('payment_status', 'pending')
+    const { data: order } = await getAdminSupabase().from('orders').select('id')
+      .eq('id', orderId).eq('user_id', user.id).maybeSingle()
+    if (!order) return { ok: false, error: 'Order not found.' }
+    await reconcileOrderPayment(order.id)
 
     revalidatePath('/orders')
     return { ok: true }
   } catch (err) {
     return fail(err, 'Could not update order.')
   }
+}
+
+
+/** Quote only the signed-in customer's saved address; checkout recalculates it. */
+export async function quoteShippingAction(addressId: string): Promise<ActionResult<{ amount: number }>> {
+  try {
+    const user = await getSignedInUser()
+    if (!user) return { ok: false, error: 'Please sign in to calculate shipping.' }
+    const { data: address, error } = await getAdminSupabase().from('addresses')
+      .select('postal_code, country').eq('id', addressId).eq('user_id', user.id).maybeSingle()
+    if (error || !address) return { ok: false, error: 'Select a valid delivery address.' }
+    return { ok: true, amount: await shippingChargeForAddress(address) }
+  } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'Unable to calculate shipping.' } }
 }

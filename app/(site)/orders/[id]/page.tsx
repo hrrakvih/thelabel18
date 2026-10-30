@@ -26,6 +26,7 @@ type Order = {
   status: string;
   subtotal: number;
   discount_amount: number;
+  shipping_amount?: number;
   total: number;
   coupon_code: string | null;
   created_at: string;
@@ -65,6 +66,7 @@ type TrackingActivity = {
 
 type TrackingData = {
   tracked: boolean;
+  order_status?: string;
   status: string;
   tracking_number: string | null;
   courier_name: string | null;
@@ -144,7 +146,11 @@ export default function OrderDetailPage() {
     try {
       const res = await fetch(`/api/tracking?orderId=${id}`);
       const data = await res.json();
+      if (!res.ok) return;
       setTracking(data);
+      if (data.order_status === "delivered") {
+        setOrder((current) => current?.id === id ? { ...current, status: "delivered" } : current);
+      }
     } catch {
       // silently ignore; tracking is optional
     } finally {
@@ -185,7 +191,7 @@ export default function OrderDetailPage() {
 
       // Auto-fetch tracking for shipped/delivered orders
       const status = (orderData as Order).status?.toLowerCase();
-      if (status === "shipped" || status === "delivered" || status === "out_for_delivery") {
+      if (orderData.tracking_number || status === "shipped" || status === "delivered" || status === "out_for_delivery") {
         fetchTracking(orderId);
       }
     })();
@@ -570,7 +576,7 @@ export default function OrderDetailPage() {
 <div className="flex justify-between items-center text-[#1A1A1A]/70 text-xs">
   <span>Shipping Charges</span>
   <span className="text-[#9c7d23] font-medium uppercase tracking-wider text-[11px]">
-    Extra
+    ₹{Number(order.shipping_amount ?? 0).toLocaleString('en-IN')}
   </span>
 </div>
 

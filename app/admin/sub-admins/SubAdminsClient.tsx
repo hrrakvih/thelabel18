@@ -30,6 +30,7 @@ const AVAILABLE_TABS = [
     { label: 'Coupons', path: '/admin/coupons' },
     { label: 'Announcements', path: '/admin/announcements' },
     { label: 'Orders', path: '/admin/orders' },
+    { label: 'PIN Codes & Shipping', path: '/admin/pincodes' },
     { label: 'Live Register (POS)', path: '/admin/pos/register' },
     { label: 'POS History', path: '/admin/pos/history' },
     { label: 'Sub Admin Management', path: '/admin/sub-admins' },

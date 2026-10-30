@@ -6,6 +6,9 @@ import { shiprocketRequest, getShiprocketToken, getPickupLocations, ShiprocketRe
 import { validateShippingAddress } from '@/lib/shipping-address'
 import { normalizeShippingPhone } from '@/lib/shipping-phone'
 import { revalidatePath } from 'next/cache'
+import { trackShipmentByAWB } from '@/lib/shiprocket'
+import { readShipmentTracking } from '@/lib/shipment-status'
+import { saveDeliveredShipment } from '@/lib/shipment-sync'
 
 async function requireOrdersAdmin() {
     const client = await createClient()
@@ -82,7 +85,8 @@ export async function bookOrderShipment(orderId: string, form: FormData) {
         billing_pincode: postalCode, billing_state: order.ship_state, billing_country: order.ship_country === 'IN' ? 'India' : order.ship_country,
         billing_email: pkg.email, billing_phone: phone, shipping_is_billing: true,
         order_items: order.items.map((item: { product_name: string; variation_id: string; product_id: string; quantity: number; unit_price: number }) => ({ name: item.product_name, sku: item.variation_id || item.product_id, units: item.quantity, selling_price: Number(item.unit_price) })),
-        payment_method: order.payment_method === 'cod' ? 'COD' : 'Prepaid', sub_total: Number(order.subtotal), total_discount: Number(order.discount_amount || 0),
+        shipping_charges: Number(order.shipping_amount || 0),
+        payment_method: order.payment_method === 'cod' ? 'COD' : 'Prepaid', sub_total: Number(order.total), total_discount: Number(order.discount_amount || 0),
         length: pkg.length, breadth: pkg.breadth, height: pkg.height, weight: pkg.weight,
       })
       if (!result.order_id || !result.shipment_id) throw new Error('Shiprocket did not confirm creation. Check the Shiprocket dashboard before retrying.')
@@ -137,5 +141,25 @@ export async function loadOrderShippingOptions(orderId: string) {
     return { success: true as const, email, locations }
   } catch (error) {
     return { success: false as const, message: error instanceof Error ? error.message : 'Unable to load shipping details.' }
+  }
+}
+
+/** Reconcile an existing AWB without creating or booking another shipment. */
+export async function syncOrderDelivery(orderId: string) {
+  try {
+    const db = await requireOrdersAdmin()
+    const { data: order, error } = await db.from('orders')
+      .select('id, status, tracking_number').eq('id', orderId).single()
+    if (error || !order) throw new Error('Order not found.')
+    if (!order.tracking_number) throw new Error('No AWB is saved for this order.')
+    if (order.status === 'cancelled') throw new Error('Cancelled orders cannot be marked delivered by shipping sync.')
+    if (order.status === 'delivered') return { success: true, message: 'Order is already delivered.' }
+    const tracking = readShipmentTracking(await trackShipmentByAWB(order.tracking_number))
+    if (!tracking.delivered) return { success: true, message: `Shiprocket status: ${tracking.label || 'Not delivered yet'}.` }
+    const updated = await saveDeliveredShipment(order.id, order.tracking_number)
+    if (!updated) throw new Error('Order changed during sync. Refresh and check its current status.')
+    return { success: true, message: 'Order updated to Delivered.' }
+  } catch (error) {
+    return { success: false, message: error instanceof Error ? error.message : 'Unable to sync delivery status.' }
   }
 }

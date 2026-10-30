@@ -52,7 +52,7 @@ export async function GET(
       .from('orders')
       .select(
         `
-        id, status, subtotal, discount_amount, total, coupon_code, created_at,
+        id, status, subtotal, discount_amount, shipping_amount, total, coupon_code, created_at,
         ship_full_name, ship_phone, ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, ship_country,
         items:order_items ( id, product_name, variation_label, unit_price, quantity, line_total )
       `
@@ -87,6 +87,7 @@ async function buildInvoicePdf(order: {
   id: string
   status: string
   subtotal: number
+  shipping_amount?: number
   discount_amount: number
   total: number
   coupon_code: string | null
@@ -280,6 +281,12 @@ async function buildInvoicePdf(order: {
       y,
       { size: 9.5, color: rgb(0.2, 0.5, 0.3) }
     )
+    y -= 17
+  }
+
+  if (Number(order.shipping_amount) > 0) {
+    text('Shipping Charges', totalsLabelX, y, { size: 9.5, color: MUTED })
+    textRight(`Rs. ${Number(order.shipping_amount).toLocaleString('en-IN')}`, colTotalRight - 10, y, { size: 9.5, color: MUTED })
     y -= 17
   }
 

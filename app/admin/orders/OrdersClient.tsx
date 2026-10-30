@@ -1,6 +1,7 @@
 // app/admin/orders/OrdersClient.tsx
 'use client'
 import { Fragment, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
     ChevronDown,
     Search,
@@ -21,6 +22,9 @@ import { shippingAddress, SHIPPING_ADDRESS_LIMIT } from '@/lib/shipping-address'
 import toast from 'react-hot-toast'
 import OrderItemPhoto, { type OrderPhotoSource } from '@/components/OrderItemPhoto'
 import ShiprocketOrderDialog from './ShiprocketOrderDialog'
+import { syncOrderPayment } from './payment-actions'
+import PaymentResultDialog from './PaymentResultDialog'
+import type { PaymentSyncResult } from '@/lib/payment-status'
 
 type OrderItem = OrderPhotoSource & {
     id: string
@@ -44,6 +48,7 @@ export type StoreOrder = {
     id: string
     status: string
     subtotal: number
+    shipping_amount?: number
     discount_amount: number
     total: number
     coupon_code: string | null
@@ -67,6 +72,14 @@ export type StoreOrder = {
     items: OrderItem[]
 }
 
+const PAYMENT_TABS = [
+    { value: 'paid', label: 'Paid orders', color: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
+    { value: 'pending', label: 'Payment pending', color: 'border-amber-300 bg-amber-50 text-amber-800' },
+    { value: 'failed', label: 'Payment failed', color: 'border-rose-300 bg-rose-50 text-rose-800' },
+    { value: 'all', label: 'All records', color: 'border-stone-400 bg-stone-100 text-stone-900' },
+] as const
+type PaymentFilter = typeof PAYMENT_TABS[number]['value']
+
 type StatusFilter = 'all' | 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -87,16 +100,21 @@ function variationText(item: OrderItem) {
 }
 
 function paymentLabel(o: StoreOrder) {
-    if (o.payment_status !== 'paid') return 'Not recorded'
+    if (o.payment_status === 'pending') return 'Payment pending'
+    if (o.payment_status === 'failed') return 'Payment failed'
+    if (o.payment_status !== 'paid') return 'Payment not recorded'
     if (o.payment_method === 'razorpay') return 'Paid · Razorpay'
     if (o.payment_method === 'coupon') return 'Paid · Coupon (₹0)'
     return 'Paid'
 }
 
+const SHIPPING_BUTTON_STYLES = 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 focus-visible:outline-amber-600'
+const SHIPMENT_BUTTON_STYLES = 'border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 focus-visible:outline-blue-600'
+
 const STATUS_STYLES: Record<string, string> = {
     pending: 'bg-amber-50 text-amber-700',
     confirmed: 'bg-blue-50 text-blue-700',
-    shipped: 'bg-indigo-50 text-indigo-700',
+    shipped: 'bg-orange-100 text-orange-800 ring-1 ring-inset ring-orange-200',
     delivered: 'bg-emerald-50 text-emerald-700',
     cancelled: 'bg-rose-50 text-rose-600',
 }
@@ -132,9 +150,10 @@ function EditOrderAddressModal({
             onSave(order.id, form)
             toast.success('Order address and phone updated successfully')
             onClose()
-        } catch (err: any) {
-            setError(err?.message || 'Failed to update address')
-            toast.error(err?.message || 'Failed to update address')
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to update address'
+            setError(message)
+            toast.error(message)
         } finally {
             setPending(false)
         }
@@ -305,6 +324,8 @@ function EditOrderAddressModal({
 }
 
 export default function OrdersClient({ orders: initialOrders }: { orders: StoreOrder[] }) {
+    const router = useRouter()
+    const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('paid')
     const [statusUpdates, setStatusUpdates] = useState<Record<string, string>>({})
     const [previousOrders, setPreviousOrders] = useState(initialOrders)
     // Server refreshes include shipping status changes; discard older optimistic overrides.
@@ -325,14 +346,25 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
         return updated
     }), [initialOrders, statusUpdates, addressUpdates])
     const [shippingOrderId, setShippingOrderId] = useState<string | null>(null)
-    const shippingOrder = orders.find(order => order.id === shippingOrderId)
+    const shippingOrder = orders.find(order => order.id === shippingOrderId && order.status !== 'cancelled')
     const [expanded, setExpanded] = useState<string | null>(null)
     const [search, setSearch] = useState('')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
     const [updatingId, setUpdatingId] = useState<string | null>(null)
+    const [paymentResult, setPaymentResult] = useState<(Partial<PaymentSyncResult> & { orderId: string; message: string; ok: boolean }) | null>(null)
+    const [syncingPaymentId, setSyncingPaymentId] = useState<string | null>(null)
+    async function checkPayment(id: string) {
+        setSyncingPaymentId(id)
+        try {
+            const result = await syncOrderPayment(id)
+            setPaymentResult({ ...result, orderId: id })
+            if (result.ok) router.refresh()
+        } catch { setPaymentResult({ orderId: id, ok: false, message: 'Unable to sync payment. Please retry.' }) }
+        finally { setSyncingPaymentId(null) }
+    }
 
     const totalRevenue = useMemo(
-        () => orders.reduce((sum, o) => sum + (o.status !== 'cancelled' ? Number(o.total) : 0), 0),
+        () => orders.reduce((sum, o) => sum + (o.status !== 'cancelled' && o.payment_status === 'paid' ? Number(o.total) : 0), 0),
         [orders]
     )
     const pendingCount = orders.filter((o) => o.status === 'pending').length
@@ -356,9 +388,9 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
                         item.product_variations?.sku?.toLowerCase().includes(q)
                 )
             const matchesStatus = statusFilter === 'all' || o.status === statusFilter
-            return matchesSearch && matchesStatus
+            return matchesSearch && matchesStatus && (paymentFilter === 'all' || o.payment_status === paymentFilter)
         })
-    }, [orders, search, statusFilter])
+    }, [orders, search, statusFilter, paymentFilter])
 
     async function handleStatusChange(orderId: string, newStatus: string) {
         setUpdatingId(orderId)
@@ -441,6 +473,17 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
                 </div>
             </div>
 
+            <nav aria-label="Order payment tabs" className="mb-4 flex flex-wrap gap-2">
+                {PAYMENT_TABS.map(tab => {
+                    const count = tab.value === 'all' ? orders.length : orders.filter(order => order.payment_status === tab.value).length
+                    const selected = paymentFilter === tab.value
+                    return <button key={tab.value} type="button" aria-pressed={selected} onClick={() => { setPaymentFilter(tab.value); setSearch(''); setStatusFilter('all'); setExpanded(null) }} className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 ${selected ? tab.color : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'}`}>
+                        {tab.label}<span className="rounded-full bg-white/80 px-2 py-0.5 text-xs tabular-nums">{count}</span>
+                    </button>
+                })}
+            </nav>
+            <p aria-live="polite" className="mb-4 text-sm text-stone-500">{filteredOrders.length} {paymentFilter === 'paid' ? 'paid orders' : paymentFilter === 'pending' ? 'pending payments' : paymentFilter === 'failed' ? 'failed payments' : 'records'} shown. {paymentFilter === 'pending' ? 'A pending payment is not confirmed. Use Sync payment to check or capture an authorized payment.' : paymentFilter === 'failed' ? 'Use Sync payment to view the failure reason reported by Razorpay.' : ''}</p>
+
             {/* Search + filters */}
             <div className="mb-6 flex flex-wrap items-center gap-4 rounded-3xl border border-[#9c7d23]/20 bg-white/60 backdrop-blur-md p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
                 <div className="relative min-w-[220px] flex-1">
@@ -477,43 +520,47 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
                         Clear
                     </button>
                 )}
+                <button type="button" onClick={() => router.refresh()} className="rounded-xl border border-[#9c7d23]/20 bg-white px-4 py-2.5 text-sm font-semibold text-[#785e16]">Refresh orders</button>
             </div>
 
-            <div className="hidden md:block overflow-hidden rounded-3xl border border-[#9c7d23]/20 bg-white/60 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+            <div className="hidden lg:block w-full max-w-[1080px] overflow-hidden rounded-3xl border border-[#9c7d23]/20 bg-white/60 backdrop-blur-md shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
                 <div className="overflow-x-auto">
-                    <table className="min-w-[1000px] w-full text-left text-sm whitespace-nowrap">
+                    <table className="min-w-[976px] w-full table-fixed text-left text-sm">
+                    <colgroup>
+                        <col className="w-16" />
+                        <col className="w-28" />
+                        <col className="w-48" />
+                        <col className="w-28" />
+                        <col className="w-20" />
+                        <col className="w-28" />
+                        <col className="w-32" />
+                        <col className="w-44" />
+                    </colgroup>
                     <thead className="bg-[#FAF7F1] text-[10px] uppercase tracking-[0.2em] text-[#8b8478]">
                         <tr>
-                            <th className="w-12 px-6 py-4 font-semibold"></th>
-                            <th className="px-6 py-4 font-semibold">Order</th>
-                            <th className="px-6 py-4 font-semibold">Customer</th>
-                            <th className="px-6 py-4 font-semibold">Date</th>
-                            <th className="px-6 py-4 font-semibold">Items</th>
-                            <th className="px-6 py-4 font-semibold">Amount Paid</th>
-                            <th className="px-6 py-4 font-semibold">Status</th>
+                            <th className="w-16 px-3 py-4 font-semibold"></th>
+                            <th className="px-3 py-4 font-semibold">Order</th>
+                            <th className="px-3 py-4 font-semibold">Customer</th>
+                            <th className="py-4 pl-3 pr-1 font-semibold">Date</th>
+                            <th className="py-4 pl-1 pr-3 font-semibold">Items</th>
+                            <th className="px-3 py-4 font-semibold">Amount</th>
+                            <th className="px-3 py-4 font-semibold">Status</th>
+                            <th className="px-3 py-4 font-semibold">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filteredOrders.map((o) => {
                             const isOpen = expanded === o.id
                             const itemCount = o.items.reduce((sum, i) => sum + i.quantity, 0)
-                            const orderDate = new Date(o.created_at).toLocaleString('en-IN', {
-                                timeZone: 'Asia/Kolkata',
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                hour12: false,
-                            })
+
 
                             return (
                                 <Fragment key={o.id}>
                                     <tr className="border-t border-[#9c7d23]/10 hover:bg-white/40 transition-colors">
-                                        <td className="px-6 py-4">
+                                        <td className="px-3 py-4">
                                             <button
                                                 onClick={() => setExpanded(isOpen ? null : o.id)}
-                                                className="flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#9c7d23]/20 text-[#8b8478] transition-all hover:border-[#9c7d23]/50 hover:text-[#141414] hover:shadow-sm"
+                                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white border border-[#9c7d23]/20 text-[#8b8478] transition-all hover:border-[#9c7d23]/50 hover:text-[#141414] hover:shadow-sm"
                                             >
                                                 <ChevronDown
                                                     size={14}
@@ -522,15 +569,16 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
                                                 />
                                             </button>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-3 py-4">
                                             <span className="font-semibold text-[#141414]">#{o.id.slice(0, 8).toUpperCase()}</span>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-start justify-between gap-2">
-                                                <div>
-                                                    <p className="font-semibold text-[#141414]">{o.ship_full_name}</p>
+                                        <td className="px-3 py-4">
+                                            <div className="flex min-w-0 items-start gap-2">
+                                                <div className="min-w-0">
+                                                    <p title={o.ship_full_name} className="truncate font-semibold text-[#141414]">{o.ship_full_name}</p>
                                                     <p className="text-xs text-[#8b8478]">{o.ship_phone}</p>
                                                 </div>
+
                                                 <button
                                                     type="button"
                                                     onClick={(e) => {
@@ -538,19 +586,23 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
                                                         setEditingAddressOrder(o)
                                                     }}
                                                     title="Edit phone & delivery address"
-                                                    className="p-1 rounded-lg text-[#8b8478] hover:text-[#9c7d23] hover:bg-white transition-colors"
+                                                    className="shrink-0 p-1 rounded-lg text-[#8b8478] hover:text-[#9c7d23] hover:bg-white transition-colors"
                                                 >
                                                     <Pencil size={13} />
                                                 </button>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-[#8b8478]">{orderDate}</td>
-                                        <td className="px-6 py-4 text-[#8b8478]">{itemCount} items</td>
-                                        <td className="px-6 py-4 font-bold text-[#141414]">
-                                            ₹{Number(o.total).toLocaleString()}
+                                        <td className="py-4 pl-3 pr-1">
+                                            <p className="font-medium text-[#141414]">{new Date(o.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
+                                            <p className="mt-1 text-xs text-[#8b8478]">{new Date(o.created_at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}</p>
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
+                                        <td className="py-4 pl-1 pr-3 text-[#8b8478]">{itemCount} items</td>
+                                        <td className="px-3 py-4 font-bold text-[#141414]">
+                                            ₹{Number(o.total).toLocaleString()}
+                                            <p className={`mt-1 text-[10px] font-medium ${o.payment_status === 'failed' ? 'text-rose-700' : o.payment_status === 'pending' ? 'text-amber-700' : 'text-emerald-700'}`}>{paymentLabel(o)}</p>
+                                        </td>
+                                        <td className="px-3 py-4">
+                                            <div className="flex items-center gap-2">
                                                 <span
                                                     className={`rounded-full px-3 py-1 text-[10px] uppercase tracking-wider font-bold ${
                                                         STATUS_STYLES[o.status] ?? 'bg-stone-100 text-stone-500'
@@ -561,26 +613,31 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
                                                 {updatingId === o.id && (
                                                     <Loader2 size={14} className="animate-spin text-[#9c7d23]" />
                                                 )}
-<button type="button" onClick={() => setShippingOrderId(o.id)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#9c7d23]/30 bg-white px-3 py-2 text-xs font-semibold text-[#785e16] hover:bg-[#FAF7F1]">
+                                            </div>
+                                        </td>
+                                        <td className="py-4 pl-3 pr-2">
+                                            <div className="flex items-center justify-end gap-2">
+                                                {o.payment_method === 'razorpay' && ['pending', 'failed'].includes(o.payment_status ?? '') && <button type="button" disabled={syncingPaymentId !== null} onClick={() => checkPayment(o.id)} className="inline-flex h-9 shrink-0 items-center justify-center rounded-xl border border-stone-300 bg-white px-3 text-xs font-semibold text-stone-700 disabled:opacity-50">{syncingPaymentId === o.id ? 'Checking…' : 'Sync payment'}</button>}
+                                                {o.status !== 'cancelled' && (o.payment_status === 'paid' || o.payment_method === 'cod') && (<button type="button" onClick={() => setShippingOrderId(o.id)} className={`inline-flex h-9 min-w-28 shrink-0 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 ${o.shiprocket_order_id ? SHIPMENT_BUTTON_STYLES : SHIPPING_BUTTON_STYLES}`}>
                                                     <Truck size={14} />{o.shiprocket_order_id ? 'Shipment' : 'Shipping'}
-                                                    {o.tracking_number && <span className="font-mono text-[10px]">{o.tracking_number}</span>}
-                                                </button>
-                                                <a
+                                                </button>)}
+                                                {(o.payment_status === 'paid' || o.payment_status == null) && (<a
                                                     href={`/admin/orders/invoice/${o.id}`}
                                                     download
                                                     onClick={(e) => e.stopPropagation()}
                                                     title="Download invoice"
-                                                    className="flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#9c7d23]/20 text-[#8b8478] transition-all hover:border-[#9c7d23]/50 hover:text-[#141414] hover:shadow-sm"
+                                                    aria-label="Download invoice"
+                                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white border border-[#9c7d23]/20 text-[#8b8478] transition-all hover:border-[#9c7d23]/50 hover:text-[#141414] hover:shadow-sm"
                                                 >
                                                     <Download size={14} strokeWidth={2} />
-                                                </a>
+                                                </a>)}
                                             </div>
                                         </td>
                                     </tr>
 
                                     {isOpen && (
                                         <tr>
-                                            <td colSpan={7} className="bg-stone-50/60 px-0 py-0 whitespace-normal">
+                                            <td colSpan={8} className="bg-stone-50/60 px-0 py-0 whitespace-normal">
                                                 <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-5 px-6 py-4">
                                                     {/* Items + variations */}
                                                     <div className="min-w-0">
@@ -664,8 +721,9 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
                                                                     <span>−₹{Number(o.discount_amount).toLocaleString()}</span>
                                                                 </div>
                                                             )}
+                                                            <div className="flex justify-between text-stone-600"><span>Shipping Charges</span><span>₹{Number(o.shipping_amount ?? 0).toLocaleString('en-IN')}</span></div>
                                                             <div className="flex justify-between border-t border-stone-100 pt-2 text-base font-bold text-black">
-                                                                <span>Amount Paid</span>
+                                                                <span>{o.payment_status === 'paid' ? 'Amount Paid' : 'Order Total'}</span>
                                                                 <span>₹{Number(o.total).toLocaleString()}</span>
                                                             </div>
                                                             <div className="flex justify-between gap-3 text-xs text-stone-500">
@@ -697,14 +755,14 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
                                                             ))}
                                                         </select>
 
-                                                        <a
+                                                        {(o.payment_status === 'paid' || o.payment_status == null) && (<a
                                                             href={`/admin/orders/invoice/${o.id}`}
                                                             download
                                                             className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-stone-700 hover:border-black hover:text-black"
                                                         >
                                                             <Download size={14} />
                                                             Download Invoice
-                                                        </a>
+                                                        </a>)}
                                                     </div>
                                                 </div>
                                             </td>
@@ -716,7 +774,7 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
 
                         {filteredOrders.length === 0 && (
                             <tr>
-                                <td colSpan={7} className="px-6 py-12 text-center text-sm text-stone-500">
+                                <td colSpan={8} className="px-6 py-12 text-center text-sm text-stone-500">
                                     {orders.length === 0 ? 'No orders yet.' : 'No orders match your search or filter.'}
                                 </td>
                             </tr>
@@ -727,7 +785,7 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
             </div>
 
             {/* Mobile Card Layout */}
-            <div className="flex flex-col gap-4 md:hidden">
+            <div className="flex flex-col gap-4 lg:hidden">
                 {filteredOrders.map((o) => {
                     const isOpen = expanded === o.id;
                     const itemCount = o.items.reduce((sum, i) => sum + i.quantity, 0);
@@ -781,14 +839,15 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
                                     <div className="text-right">
                                         <p className="font-bold text-[#141414] text-sm">₹{Number(o.total).toLocaleString()}</p>
                                         <p className="text-xs text-[#8b8478]">{itemCount} items</p>
+                                        <p className={`mt-1 text-xs ${o.payment_status === 'failed' ? 'text-rose-700' : o.payment_status === 'pending' ? 'text-amber-700' : 'text-emerald-700'}`}>{paymentLabel(o)}</p>
                                     </div>
                                 </div>
 
                                 <div className="flex flex-wrap items-center gap-2 pt-1">
-                                    <button type="button" onClick={() => setShippingOrderId(o.id)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#9c7d23]/30 bg-white px-3 py-2 text-xs font-semibold text-[#785e16] hover:bg-[#FAF7F1]">
+                                    {o.payment_method === 'razorpay' && ['pending', 'failed'].includes(o.payment_status ?? '') && <button type="button" disabled={syncingPaymentId !== null} onClick={() => checkPayment(o.id)} className="inline-flex h-9 shrink-0 items-center justify-center rounded-xl border border-stone-300 bg-white px-3 text-xs font-semibold text-stone-700 disabled:opacity-50">{syncingPaymentId === o.id ? 'Checking…' : 'Sync payment'}</button>}
+                                                {o.status !== 'cancelled' && (o.payment_status === 'paid' || o.payment_method === 'cod') && (<button type="button" onClick={() => setShippingOrderId(o.id)} className={`inline-flex h-9 min-w-28 shrink-0 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 ${o.shiprocket_order_id ? SHIPMENT_BUTTON_STYLES : SHIPPING_BUTTON_STYLES}`}>
                                                     <Truck size={14} />{o.shiprocket_order_id ? 'Shipment' : 'Shipping'}
-                                                    {o.tracking_number && <span className="font-mono text-[10px]">{o.tracking_number}</span>}
-                                                </button>
+                                                </button>)}
                                     <button
                                         onClick={() => setExpanded(isOpen ? null : o.id)}
                                         className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-white border border-[#9c7d23]/20 py-2 text-xs font-semibold text-[#8b8478] hover:border-[#9c7d23]/50 hover:text-[#141414]"
@@ -796,13 +855,13 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
                                         {isOpen ? 'Hide Details' : 'View Details'}
                                         <ChevronDown size={14} className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
                                     </button>
-                                    <a
+                                    {(o.payment_status === 'paid' || o.payment_status == null) && (<a
                                         href={`/admin/orders/invoice/${o.id}`}
                                         download
                                         className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl bg-white border border-[#9c7d23]/20 text-[#8b8478] hover:border-[#9c7d23]/50 hover:text-[#141414]"
                                     >
                                         <Download size={14} />
-                                    </a>
+                                    </a>)}
                                 </div>
                             </div>
 
@@ -901,6 +960,7 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
                                                     <span>−₹{Number(o.discount_amount).toLocaleString()}</span>
                                                 </div>
                                             )}
+                                            <div className="flex justify-between text-stone-500"><span>Shipping Charges</span><span>₹{Number(o.shipping_amount ?? 0).toLocaleString('en-IN')}</span></div>
                                             <div className="flex justify-between border-t border-[#9c7d23]/10 pt-2 text-sm font-bold text-[#141414]">
                                                 <span>Total</span>
                                                 <span>₹{Number(o.total).toLocaleString()}</span>
@@ -930,6 +990,7 @@ export default function OrdersClient({ orders: initialOrders }: { orders: StoreO
                     </div>
                 )}
             </div>
+            {paymentResult && <PaymentResultDialog result={paymentResult} onClose={() => setPaymentResult(null)} />}
             {shippingOrder && <ShiprocketOrderDialog key={shippingOrder.id} order={shippingOrder} onClose={() => setShippingOrderId(null)} />}
             {editingAddressOrder && (
                 <EditOrderAddressModal

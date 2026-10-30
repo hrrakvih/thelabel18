@@ -14,7 +14,7 @@ export default async function OrdersPage() {
     .from('orders')
     .select(
       `
-      id, status, subtotal, discount_amount, total, coupon_code, created_at,
+      id, status, subtotal, discount_amount, shipping_amount, total, coupon_code, created_at,
       payment_method, payment_status, razorpay_payment_id,
       shiprocket_order_id, tracking_number, courier_name, shipping_booking_state, shipping_package,
       ship_full_name, ship_phone, ship_line1, ship_line2, ship_city, ship_state, ship_postal_code, ship_country,
@@ -25,8 +25,7 @@ export default async function OrdersPage() {
       )
     `
     )
-    // Hide checkout attempts that were never paid (NULL = placed before online payments)
-    .or('payment_status.is.null,payment_status.eq.paid')
+    // Include pending/failed payments so recent checkout attempts remain visible.
 
   const { data, error } = await query
     .order('created_at', { ascending: false })

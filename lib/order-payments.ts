@@ -13,16 +13,23 @@ import { getAdminSupabase } from '@/lib/supabase/admin'
 export async function finalizePaidOrder(orderId: string, razorpayPaymentId: string | null) {
   const supabaseAdmin = getAdminSupabase()
 
+  const { data: currentOrder, error: currentError } = await supabaseAdmin.from('orders')
+    .select('status, payment_status').eq('id', orderId).maybeSingle()
+  if (currentError || !currentOrder) throw new Error('Unable to load the order before confirming payment.')
+  if (currentOrder.payment_status === 'paid') return false
+  if (currentOrder.status === 'cancelled') throw new Error('A cancelled order cannot be confirmed automatically.')
+
   // 1. Claim the order atomically: only a pending/failed order can become paid.
   const { data: order, error: claimErr } = await supabaseAdmin
     .from('orders')
     .update({
       payment_status: 'paid',
-      status: 'confirmed',
+      status: currentOrder.status === 'pending' ? 'confirmed' : currentOrder.status,
       razorpay_payment_id: razorpayPaymentId,
       paid_at: new Date().toISOString(),
     })
     .eq('id', orderId)
+    .eq('status', currentOrder.status)
     .in('payment_status', ['pending', 'failed'])
     .select('id, user_id, coupon_code')
     .maybeSingle()

@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:shipping": "node --experimental-strip-types --test tests/*.test.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

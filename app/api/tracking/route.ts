@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { trackShipmentByAWB } from "@/lib/shiprocket";
+import { readShipmentTracking } from "@/lib/shipment-status";
+import { saveDeliveredShipment } from "@/lib/shipment-sync";
 
 /**
  * GET /api/tracking?orderId=<uuid>
@@ -50,22 +52,24 @@ export async function GET(req: NextRequest) {
 
   try {
     const raw = await trackShipmentByAWB(order.tracking_number);
-    // Shiprocket returns: tracking_data.shipment_track_activities
-    const trackData = raw?.tracking_data;
-    const activities: any[] = trackData?.shipment_track_activities ?? [];
-    const latestStatus = trackData?.track_status ?? order.status;
-    const etd = trackData?.etd ?? null;
+    const tracking = readShipmentTracking(raw);
+    let orderStatus = order.status;
+    if (tracking.delivered) {
+      const updated = await saveDeliveredShipment(order.id, order.tracking_number);
+      if (updated) orderStatus = "delivered";
+    }
 
     return NextResponse.json({
       tracked: true,
-      status: latestStatus,
+      status: tracking.label || orderStatus,
+      order_status: orderStatus,
       tracking_number: order.tracking_number,
-      courier_name: order.courier_name ?? trackData?.courier_name ?? null,
-      tracking_url: order.tracking_url ?? null,
-      etd,
-      activities: activities.slice(0, 10), // last 10 events
+      courier_name: order.courier_name ?? tracking.courier ?? null,
+      tracking_url: order.tracking_url ?? tracking.url,
+      etd: tracking.etd,
+      activities: tracking.activities,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Fall back gracefully — return basic info without live tracking
     return NextResponse.json({
       tracked: false,
@@ -74,7 +78,7 @@ export async function GET(req: NextRequest) {
       courier_name: order.courier_name ?? null,
       tracking_url: order.tracking_url ?? null,
       activities: [],
-      error: err.message,
+      error: err instanceof Error ? err.message : "Unable to fetch shipment tracking.",
     });
   }
 }

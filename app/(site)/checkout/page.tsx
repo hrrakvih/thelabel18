@@ -9,10 +9,12 @@ import { Address, getAddresses, addAddress, AddressInput } from "@/lib/supabase/
 import AddressForm from "@/components/AddressForm";
 import {
   startCheckoutAction,
+  quoteShippingAction,
   verifyPaymentAction,
   markPaymentAbandonedAction,
 } from "@/app/(site)/checkout/actions";
 import toast from "react-hot-toast";
+import { payableWithShipping } from "@/lib/shipping-pricing";
 import { Sparkles, ShieldCheck, Lock, CheckCircle2, ArrowRight } from "lucide-react";
 
 type RazorpaySuccessResponse = {
@@ -80,6 +82,20 @@ export default function CheckoutPage() {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [shippingQuote, setShippingQuote] = useState<{ addressId: string; amount?: number; error?: string } | null>(null);
+  const [quoteAttempt, setQuoteAttempt] = useState(0);
+  const shippingReady = !!selectedAddressId && shippingQuote?.addressId === selectedAddressId && shippingQuote.amount !== undefined;
+  const shippingAmount = shippingReady ? shippingQuote!.amount! : 0;
+  useEffect(() => {
+    if (!selectedAddressId || !user) return;
+    let cancelled = false;
+    quoteShippingAction(selectedAddressId).then(result => {
+      if (!cancelled) setShippingQuote(result.ok ? { addressId: selectedAddressId, amount: result.amount } : { addressId: selectedAddressId, error: result.error });
+    }).catch(() => {
+      if (!cancelled) setShippingQuote({ addressId: selectedAddressId, error: "Unable to calculate shipping. Please retry." });
+    });
+    return () => { cancelled = true; };
+  }, [selectedAddressId, user, quoteAttempt]);
   const [isAddressFormOpen, setIsAddressFormOpen] = useState(false);
 
   const [couponInput, setCouponInput] = useState("");
@@ -130,7 +146,7 @@ export default function CheckoutPage() {
     (sum, item) => sum + Number(item.product_variations?.price ?? 0) * item.quantity,
     0
   );
-  const total = Math.max(subtotal - discount, 0);
+  const total = payableWithShipping(subtotal, discount, shippingAmount);
 
   async function handleAddAddress(input: AddressInput) {
     if (!user) return;
@@ -235,7 +251,7 @@ export default function CheckoutPage() {
   }
 
   async function handlePlaceOrder() {
-    if (!user || !selectedAddressId) return;
+    if (!user || !selectedAddressId || !shippingReady) return;
     setPlacing(true);
     setPlaceError(null);
 
@@ -250,7 +266,7 @@ export default function CheckoutPage() {
       }
 
       const [checkout, scriptLoaded] = await Promise.all([
-        startCheckoutAction({ addressId: selectedAddressId, appliedCoupon }),
+        startCheckoutAction({ addressId: selectedAddressId, appliedCoupon, expectedShippingAmount: shippingAmount }),
         loadRazorpayCheckout(),
       ]);
 
@@ -525,26 +541,27 @@ export default function CheckoutPage() {
 <div className="flex justify-between items-center text-[#1A1A1A]/70 text-xs">
   <span>Shipping Charges</span>
   <span className="text-[#9c7d23] font-medium uppercase tracking-wider text-[11px]">
-    Extra
+    {shippingReady ? `₹${shippingAmount.toLocaleString('en-IN')}` : selectedAddressId ? (shippingQuote?.error ? 'Unavailable' : 'Calculating…') : 'Select address'}
   </span>
 </div>
                 </div>
 
                 <div className="pt-3 border-t border-neutral-100 flex justify-between items-baseline font-outfit">
                   <span className="text-xs tracking-widest uppercase font-semibold text-[#1A1A1A]">Total Payable</span>
-                  <span className="text-xl sm:text-2xl font-bold text-[#9c7d23]">₹{total.toLocaleString()}</span>
+                  <span className="text-xl sm:text-2xl font-bold text-[#9c7d23]">{shippingReady ? `₹${total.toLocaleString()}` : "—"}</span>
                 </div>
 
+                {shippingQuote?.addressId === selectedAddressId && shippingQuote.error && <p role="alert" className="text-xs text-red-600">{shippingQuote.error} <button type="button" className="underline" onClick={() => { setShippingQuote(null); setQuoteAttempt(v => v + 1); }}>Retry</button></p>}
                 {placeError && (
                   <p className="text-xs text-red-600 font-outfit">{placeError}</p>
                 )}
 
                 <button
                   onClick={handlePlaceOrder}
-                  disabled={placing || !selectedAddressId}
+                  disabled={placing || !selectedAddressId || !shippingReady}
                   className="w-full py-4 rounded-full bg-gradient-to-r from-[#F5E6C8] via-[#E6C35C] to-[#D4AF37] text-black font-bold text-xs tracking-[0.18em] uppercase shadow-[0_4px_20px_rgba(212,175,55,0.4)] hover:shadow-[0_6px_25px_rgba(212,175,55,0.6)] transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  <span>{placing ? "Securing Order..." : `Pay ₹${total.toLocaleString()} Securely`}</span>
+                  <span>{placing ? "Securing Order..." : !shippingReady ? "Select address and confirm shipping" : `Pay ₹${total.toLocaleString()} Securely`}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
 

@@ -19,6 +19,12 @@ export type RazorpayPayment = {
   currency: string
   status: 'created' | 'authorized' | 'captured' | 'refunded' | 'failed'
   method: string | null
+  created_at?: number
+  error_code?: string | null
+  error_description?: string | null
+  error_reason?: string | null
+  error_source?: string | null
+  error_step?: string | null
 }
 
 function getCredentials() {
@@ -49,6 +55,7 @@ async function razorpayRequest<T>(path: string, method: 'GET' | 'POST' = 'GET', 
     },
     body: body ? JSON.stringify(body) : undefined,
     cache: 'no-store',
+    signal: AbortSignal.timeout(15000),
   })
 
   const data = await res.json().catch(() => null)
@@ -96,4 +103,15 @@ export function verifyPaymentSignature(razorpayOrderId: string, razorpayPaymentI
     .update(`${razorpayOrderId}|${razorpayPaymentId}`)
     .digest('hex')
   return safeEqual(expected, signature)
+}
+
+
+export function fetchRazorpayOrderPayments(orderId: string) {
+  return razorpayRequest<{ items: RazorpayPayment[] }>(`/orders/${encodeURIComponent(orderId)}/payments`)
+}
+
+export function verifyRazorpayWebhook(body: string, signature: string, secret: string) {
+  if (!secret || !/^[a-f0-9]{64}$/i.test(signature)) return false
+  const expected = crypto.createHmac('sha256', secret).update(body).digest('hex')
+  return safeEqual(expected, signature.toLowerCase())
 }

@@ -1,12 +1,28 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { syncOrderDelivery } from './shipping-actions'
 import { Truck, X, ExternalLink } from 'lucide-react'
 import type { StoreOrder } from './OrdersClient'
 import { shippingAddress, SHIPPING_ADDRESS_LIMIT } from '@/lib/shipping-address'
 import ShippingForm from './ShippingForm'
 
 export default function ShiprocketOrderDialog({ order, onClose }: { order: StoreOrder; onClose: () => void }) {
+  const router = useRouter()
+  const [syncing, setSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState('')
+  async function syncDelivery() {
+    setSyncing(true)
+    setSyncMessage('')
+    try {
+      const result = await syncOrderDelivery(order.id)
+      setSyncMessage(result.message)
+      if (result.success) router.refresh()
+    } catch {
+      setSyncMessage('Unable to sync delivery status. Please retry.')
+    } finally { setSyncing(false) }
+  }
   const dialog = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     const element = dialog.current
@@ -39,6 +55,8 @@ export default function ShiprocketOrderDialog({ order, onClose }: { order: Store
     {order.shiprocket_order_id && <a href="https://app.shiprocket.in/" target="_blank" rel="noopener noreferrer" className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"><ExternalLink size={16} />Open Shiprocket</a>}
     {shippingAddress(order.ship_line1, order.ship_line2).length > SHIPPING_ADDRESS_LIMIT && !order.shiprocket_order_id && <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">Address lines 1 + 2: {shippingAddress(order.ship_line1, order.ship_line2).length}/{SHIPPING_ADDRESS_LIMIT} characters. Close this dialog and use Edit Address &amp; Phone to shorten the address before booking.</p>}
     {!order.items.length && <p role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">This order has no product items. A demo row in the orders table does not include products. Add the purchased items to order_items or place a complete order through checkout before booking shipping.</p>}
+    {order.tracking_number && !['cancelled', 'delivered'].includes(order.status) && <button type="button" disabled={syncing} onClick={syncDelivery} className="mt-4 w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm font-semibold disabled:opacity-50">{syncing ? 'Checking delivery…' : 'Sync delivery status'}</button>}
+    {syncMessage && <p role="status" className="mt-2 text-sm">{syncMessage}</p>}
     <ShippingForm orderId={order.id} shipment={order} disabled={!order.items.length || ['cancelled', 'delivered'].includes(order.status)} />
   </dialog>
 }
