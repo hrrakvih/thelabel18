@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/HoverPrefetchLink";
 import Image from "next/image";
 import type { CategoryTree, SubCategory } from "@/lib/categories";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/HoverPrefetchLink";
 import { useEffect, useRef, useState } from "react";
 import { CategoryTree } from "@/lib/categories";
 

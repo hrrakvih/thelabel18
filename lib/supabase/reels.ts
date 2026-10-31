@@ -1,5 +1,5 @@
 // lib/supabase/reels.ts
-import { createClient } from "@/lib/supabase/server";
+import { createPublicClient } from "@/lib/supabase/public";
 
 export type ReelType = "upload" | "instagram";
 
@@ -22,17 +22,15 @@ export type Reel = {
 const STORAGE_BUCKET = "reels";
 
 export async function getReels(): Promise<Reel[]> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
 
   const { data, error } = await supabase
     .from("reels")
     .select("*")
     .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("Error fetching reels:", error.message);
-    return [];
-  }
+  // Throw so the cache keeps the last good page instead of an empty feed.
+  if (error) throw new Error(`Error fetching reels: ${error.message}`);
 
   return (data ?? []).map((reel) => {
     if (reel.type === "upload" && !reel.video_url && reel.storage_path) {

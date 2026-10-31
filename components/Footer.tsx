@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/HoverPrefetchLink";
 import Image from "next/image";
 import { getCategoriesTree } from "@/lib/categories";
 import {

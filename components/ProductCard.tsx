@@ -192,6 +192,7 @@ export default function ProductCard({ product }: { product: ProductWithPrice }) 
         {/* Bottom Action Bar */}
         <div className="flex items-center justify-between pt-2 sm:pt-3 mt-auto border-t border-[#1A1A1A]/10">
           <Link
+            prefetch={false}
             href={productUrl}
             className="flex items-center gap-1 text-[#1A1A1A]/60 hover:text-[#9c7d23] transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 sm:w-3.5 h-3 sm:h-3.5">

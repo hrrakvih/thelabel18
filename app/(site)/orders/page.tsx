@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/HoverPrefetchLink";
 import { useAuth } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 import { Package, Lock, ArrowRight, Clock, CheckCircle2, Truck, AlertCircle } from "lucide-react";

@@ -1,7 +1,7 @@
 // components/reels/ReelsFeed.tsx
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/HoverPrefetchLink";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Volume2, VolumeX, X, ExternalLink } from "lucide-react";

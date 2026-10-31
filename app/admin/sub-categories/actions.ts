@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { revalidateStorefront } from '@/lib/revalidate-storefront'
 import { getAdminSupabase } from '@/lib/supabase/admin'
 
 const BUCKET = 'subcategory-images'
@@ -62,6 +63,7 @@ export async function addSubCategory(formData: FormData) {
     if (error) return { success: false, error: error.message }
 
     revalidatePath('/admin/sub-categories')
+    revalidateStorefront()
     return { success: true }
   } catch (err: any) {
     console.error('addSubCategory error:', err)
@@ -116,6 +118,7 @@ export async function updateSubCategory(id: string, formData: FormData) {
     if (error) return { success: false, error: error.message }
 
     revalidatePath('/admin/sub-categories')
+    revalidateStorefront()
     return { success: true }
   } catch (err: any) {
     console.error('updateSubCategory error:', err)
@@ -133,6 +136,7 @@ export async function toggleSubCategoryVisibility(id: string, nextValue: boolean
 
     if (error) throw new Error(error.message)
     revalidatePath('/admin/sub-categories')
+    revalidateStorefront()
     return { success: true }
   } catch (err: any) {
     throw new Error(err.message)
@@ -150,6 +154,7 @@ export async function updateSubCategoryPriority(id: string, categoryId: string, 
 
     if (error) throw new Error(error.message)
     revalidatePath('/admin/sub-categories')
+    revalidateStorefront()
     return { success: true }
   } catch (err: any) {
     throw new Error(err.message)
@@ -168,6 +173,7 @@ export async function deleteSubCategory(id: string, imageUrl: string | null) {
     if (error) throw new Error(error.message)
 
     revalidatePath('/admin/sub-categories')
+    revalidateStorefront()
     return { success: true }
   } catch (err: any) {
     throw new Error(err.message)

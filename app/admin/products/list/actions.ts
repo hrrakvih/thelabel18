@@ -2,6 +2,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { revalidateStorefront } from '@/lib/revalidate-storefront'
 import { getAdminSupabase } from '@/lib/supabase/admin'
 
 export async function toggleProductVisibility(id: string, nextValue: boolean) {
@@ -9,6 +10,7 @@ export async function toggleProductVisibility(id: string, nextValue: boolean) {
   const { error } = await supabase.from('products').update({ is_visible: nextValue }).eq('id', id)
   if (error) throw new Error(error.message)
   revalidatePath('/admin/products/list')
+  revalidateStorefront()
 }
 
 export async function toggleVariationVisibility(id: string, nextValue: boolean) {
@@ -19,6 +21,7 @@ export async function toggleVariationVisibility(id: string, nextValue: boolean) 
     .eq('id', id)
   if (error) throw new Error(error.message)
   revalidatePath('/admin/products/list')
+  revalidateStorefront()
 }
 
 export async function deleteProduct(id: string, imageUrl: string | null) {
@@ -39,4 +42,5 @@ export async function deleteProduct(id: string, imageUrl: string | null) {
   }
 
   revalidatePath('/admin/products/list')
+  revalidateStorefront()
 }

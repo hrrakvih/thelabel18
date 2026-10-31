@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/HoverPrefetchLink";
 import OrderItemPhoto, { type OrderPhotoSource } from "@/components/OrderItemPhoto";
 import { useAuth } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";

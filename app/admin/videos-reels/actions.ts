@@ -65,6 +65,7 @@ export async function uploadVideoReel(formData: FormData) {
   }
 
   revalidatePath('/admin/videos-reels')
+  revalidatePath('/video')
 }
 
 // Option 2: Instagram link
@@ -83,6 +84,7 @@ export async function addInstagramReel(params: { url: string; caption?: string }
 
   if (error) throw new Error(error.message)
   revalidatePath('/admin/videos-reels')
+  revalidatePath('/video')
 }
 
 export async function deleteReel(id: string, storagePath: string | null) {
@@ -92,4 +94,5 @@ export async function deleteReel(id: string, storagePath: string | null) {
   const { error } = await supabase.from('reels').delete().eq('id', id)
   if (error) throw new Error(error.message)
   revalidatePath('/admin/videos-reels')
+  revalidatePath('/video')
 }

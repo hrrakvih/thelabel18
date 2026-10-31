@@ -2,6 +2,7 @@
 'use server'
 
 import { createClient } from '@supabase/supabase-js'
+import { revalidateStorefront } from '@/lib/revalidate-storefront'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -227,6 +228,8 @@ export async function checkout(params: {
     await supabase.from('pos_orders').delete().eq('id', order.id)
     throw err
   }
+
+  revalidateStorefront()
 
   return { orderNumber: order.order_number }
 }

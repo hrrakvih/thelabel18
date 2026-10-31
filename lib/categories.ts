@@ -27,6 +27,16 @@ export type CategoryTree = {
 };
 
 /**
+ * For cached pages. Throwing makes the cache keep the last good page, where an
+ * empty tree after a failed fetch would be cached as a 404 or an empty menu.
+ */
+export async function getCategoriesTreeOrThrow(): Promise<CategoryTree[]> {
+  const categories = await getCategoriesTree();
+  if (categories.length === 0) throw new Error("Category tree is unavailable");
+  return categories;
+}
+
+/**
  * Fetches the full visible category -> sub_category -> sub_sub_category tree,
  * sorted by `priority` at every level. Only rows with is_visible = true are returned.
  */

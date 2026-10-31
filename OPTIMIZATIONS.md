@@ -9,7 +9,10 @@ The five hero banners and `DSC06680` were replaced once by hand with WebP (quali
 Remaining optimizations:
 
 - Only current and previous hero slides mount, with a single image per slide. Rotation stops while the tab is hidden, and the unused progress timer was removed.
-- Product-card links do not prefetch every product route.
+- Links prefetch only on hover through `components/HoverPrefetchLink.tsx`; product-card links never prefetch. Use it instead of `next/link`, because a default link runs a function as soon as it scrolls into view.
+- Shop, category, product and reels pages are cached for an hour and use the cookie-free client in `lib/supabase/public.ts`. Reading cookies or `searchParams` in these pages turns the cache off. Call `revalidateStorefront()` after any new code that changes products, stock or categories.
+- Search, filters, sorting and page numbers run in the browser (`lib/product-filters.ts`) and never call the server.
+- Images in `public/` are cached by browsers for 30 days, so a replacement image needs a new filename.
 - Inactive reels do not load video sources or metadata.
 - Homepage queries fetch at most ten products per featured category and only card fields.
 - New uploads requiring compression use WebP quality 78.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
+import Link from "@/components/HoverPrefetchLink";
 import Image from "next/image";
 import { CategoryTree } from "@/lib/categories";
 import { ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";

@@ -2,6 +2,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { revalidateStorefront } from '@/lib/revalidate-storefront'
 import { getAdminSupabase } from '@/lib/supabase/admin'
 
 const BUCKET = 'product-images'
@@ -118,6 +119,7 @@ export async function createProduct(formData: FormData) {
     }
 
     revalidatePath('/admin/products/list')
+    revalidateStorefront()
     return { success: true }
   } catch (err: any) {
     console.error('createProduct error:', err)
@@ -195,6 +197,7 @@ export async function updateProduct(productId: string, formData: FormData) {
     }
 
     revalidatePath('/admin/products/list')
+    revalidateStorefront()
     return { success: true }
   } catch (err: any) {
     console.error('updateProduct error:', err)

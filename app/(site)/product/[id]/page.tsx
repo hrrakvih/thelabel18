@@ -1,28 +1,32 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
+import Link from "@/components/HoverPrefetchLink";
 import { getProductById, getRelatedProducts } from "@/lib/supabase/products";
-import { getCategoriesTree } from "@/lib/categories";
+import { getCategoriesTreeOrThrow } from "@/lib/categories";
 import ProductCard from "@/components/ProductCard";
-import ProductDetailClient from "@/components/ProductDetailClient";
+import ProductDetailWithColor from "@/components/ProductDetailWithColor";
 import { ArrowRight } from "lucide-react";
 
-export const revalidate = 60;
+// Cached for an hour. Admin edits and sales refresh it through revalidateStorefront,
+// and checkout re-reads price and stock from the database.
+export const revalidate = 3600;
+
+// An empty list means each product page is built on its first visit, then cached.
+export async function generateStaticParams() {
+  return [];
+}
 
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ [key: string]: string | undefined }>;
 };
 
-export default async function ProductPage({ params, searchParams }: Props) {
+export default async function ProductPage({ params }: Props) {
   const { id } = await params;
-  const sp = await searchParams;
-  const initialColor = sp.color || null;
 
   const product = await getProductById(id);
   if (!product) notFound();
 
   const [categories, related] = await Promise.all([
-    getCategoriesTree(),
+    getCategoriesTreeOrThrow(),
     getRelatedProducts(product, 15),
   ]);
 
@@ -65,7 +69,7 @@ export default async function ProductPage({ params, searchParams }: Props) {
       {/* 2. DUAL COMPOSITION: Warm Cream & Gold Luxury Catalog Area */}
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-12">
         {/* Product Details, Image Gallery & Variations Client Component */}
-        <ProductDetailClient product={product} initialColor={initialColor} />
+        <ProductDetailWithColor product={product} />
 
         {/* Related Products Section ("You May Also Like") */}
         {related.length > 0 && (

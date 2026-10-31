@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createPublicClient } from "@/lib/supabase/public";
 
 export type ProductVariation = {
   id: string;
@@ -26,44 +26,39 @@ export type Product = {
   product_variations: ProductVariation[];
 };
 
-export type ProductFilters = {
-  categoryId?: string;
-  subCategoryId?: string;
-  subSubCategoryId?: string;
-  search?: string;
-  minPrice?: number;
-  maxPrice?: number;
-  sort?: "newest" | "price_asc" | "price_desc" | "name_asc";
-  page?: number;
-  pageSize?: number;
-};
-
 export type ProductWithPrice = Product & {
   minPrice: number | null;
   maxPrice: number | null;
   inStock: boolean;
 };
 
-export async function getProducts(filters: ProductFilters) {
-  const supabase = await createClient();
-  const page = filters.page ?? 1;
-  const pageSize = filters.pageSize ?? 12;
+// Only what ProductCard and the filters read, since all of it is sent to the browser.
+const CARD_FIELDS = `
+  id, sku, name, category_id, sub_category_id, sub_sub_category_id, image_url, is_visible,
+  product_variations(id, size, color, color_hex, image_url, image_urls, stock_quantity, price, compare_at_price, is_visible),
+  category:categories(is_visible),
+  sub_category:sub_categories(is_visible),
+  sub_sub_category:sub_sub_categories(is_visible)
+`;
+
+// ProductCard only shows the first photo of each variation.
+const toCardVariation = (v: any) => ({ ...v, image_urls: v.image_urls?.slice(0, 1) });
+
+export async function getProducts(filters: {
+  categoryId?: string;
+  subCategoryId?: string;
+  subSubCategoryId?: string;
+}): Promise<ProductWithPrice[]> {
+  const supabase = createPublicClient();
 
   let query = supabase
     .from("products")
-    .select(`
-      *, 
-      product_variations(*),
-      category:categories(is_visible),
-      sub_category:sub_categories(is_visible),
-      sub_sub_category:sub_sub_categories(is_visible)
-    `)
+    .select(CARD_FIELDS)
     .eq("is_visible", true);
 
   if (filters.categoryId) query = query.eq("category_id", filters.categoryId);
   if (filters.subCategoryId) query = query.eq("sub_category_id", filters.subCategoryId);
   if (filters.subSubCategoryId) query = query.eq("sub_sub_category_id", filters.subSubCategoryId);
-  if (filters.search) query = query.ilike("name", `%${filters.search}%`);
 
   const { data, error } = await query;
   if (error) throw error;
@@ -83,55 +78,18 @@ export async function getProducts(filters: ProductFilters) {
     return true;
   });
 
-  let items: ProductWithPrice[] = validData.map((p) => {
+  return validData.map((p) => {
     const visibleVariations = (p.product_variations || []).filter((v: any) => v.is_visible);
     const prices = visibleVariations.map((v: any) => Number(v.price));
     const minPrice = prices.length ? Math.min(...prices) : null;
     const maxPrice = prices.length ? Math.max(...prices) : null;
     const inStock = visibleVariations.some((v: any) => v.stock_quantity > 0);
-    return { ...p, minPrice, maxPrice, inStock };
+    return { ...p, product_variations: (p.product_variations || []).map(toCardVariation), minPrice, maxPrice, inStock };
   });
-
-  // Price filter (done in JS since price lives on the child table)
-  if (filters.minPrice != null) {
-    items = items.filter((p) => p.minPrice != null && p.minPrice >= filters.minPrice!);
-  }
-  if (filters.maxPrice != null) {
-    items = items.filter((p) => p.minPrice != null && p.minPrice <= filters.maxPrice!);
-  }
-
-  // Sort
-  switch (filters.sort) {
-    case "price_asc":
-      items.sort((a, b) => (a.minPrice ?? Infinity) - (b.minPrice ?? Infinity));
-      break;
-    case "price_desc":
-      items.sort((a, b) => (b.minPrice ?? -Infinity) - (a.minPrice ?? -Infinity));
-      break;
-    case "name_asc":
-      items.sort((a, b) => a.name.localeCompare(b.name));
-      break;
-    default:
-      // "newest" — relies on created_at already being returned; re-fetch order isn't guaranteed
-      // without an explicit order() call above, so sort defensively if present.
-      break;
-  }
-
-  const total = items.length;
-
-  // If page is provided, do server-side pagination (used by other pages)
-  if (filters.page) {
-    const start = (filters.page - 1) * pageSize;
-    const paged = items.slice(start, start + pageSize);
-    return { items: paged, total, page: filters.page, pageSize };
-  }
-
-  // Otherwise return all items (shop page uses client-side "View More")
-  return { items, total, page: 1, pageSize: total };
 }
 
 export async function getProductById(id: string) {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
 
   const { data, error } = await supabase
     .from("products")
@@ -146,6 +104,9 @@ export async function getProductById(id: string) {
     .eq("is_visible", true)
     .single();
 
+  // No such row, or an id that isn't a UUID, is a real 404. Throw on anything else
+  // so a failed fetch keeps the last good cached page instead of caching a 404.
+  if (error && error.code !== "PGRST116" && error.code !== "22P02") throw error;
   if (error || !data) return null;
 
   const isVis = (cat: any, id: string | null) => {
@@ -170,7 +131,7 @@ export async function getProductById(id: string) {
   return product;
 }
 export async function getRelatedProducts(product: Product, limit = 15) {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
 
   const isVis = (cat: any, id: string | null) => {
     if (id && !cat) return false;
@@ -184,6 +145,7 @@ export async function getRelatedProducts(product: Product, limit = 15) {
     const prices = visible.map((v: any) => Number(v.price));
     return {
       ...p,
+      product_variations: (p.product_variations || []).map(toCardVariation),
       minPrice: prices.length ? Math.min(...prices) : null,
       maxPrice: prices.length ? Math.max(...prices) : null,
       inStock: visible.some((v: any) => v.stock_quantity > 0),
@@ -198,13 +160,7 @@ export async function getRelatedProducts(product: Product, limit = 15) {
       return true;
     });
 
-  const selectFields = `
-    *,
-    product_variations(*),
-    category:categories(is_visible),
-    sub_category:sub_categories(is_visible),
-    sub_sub_category:sub_sub_categories(is_visible)
-  `;
+  const selectFields = CARD_FIELDS;
 
   // ── Step 1: fetch from same subcategory (if product has one) ──
   let primaryResults: any[] = [];

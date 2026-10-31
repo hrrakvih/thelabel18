@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { revalidateStorefront } from '@/lib/revalidate-storefront'
 import { getAdminSupabase } from '@/lib/supabase/admin'
 
 const BUCKET = 'category-images'
@@ -58,6 +59,7 @@ export async function addCategory(formData: FormData) {
     if (error) return { success: false, error: error.message }
 
     revalidatePath('/admin/categories')
+    revalidateStorefront()
     return { success: true }
   } catch (err: any) {
     console.error('addCategory error:', err)
@@ -110,6 +112,7 @@ export async function updateCategory(id: string, formData: FormData) {
     if (error) return { success: false, error: error.message }
 
     revalidatePath('/admin/categories')
+    revalidateStorefront()
     return { success: true }
   } catch (err: any) {
     console.error('updateCategory error:', err)
@@ -127,6 +130,7 @@ export async function toggleCategoryVisibility(id: string, nextValue: boolean) {
 
     if (error) throw new Error(error.message)
     revalidatePath('/admin/categories')
+    revalidateStorefront()
     return { success: true }
   } catch (err: any) {
     throw new Error(err.message)
@@ -144,6 +148,7 @@ export async function updateCategoryPriority(id: string, priority: number) {
 
     if (error) throw new Error(error.message)
     revalidatePath('/admin/categories')
+    revalidateStorefront()
     return { success: true }
   } catch (err: any) {
     throw new Error(err.message)
@@ -162,6 +167,7 @@ export async function deleteCategory(id: string, imageUrl: string | null) {
     if (error) throw new Error(error.message)
 
     revalidatePath('/admin/categories')
+    revalidateStorefront()
     return { success: true }
   } catch (err: any) {
     throw new Error(err.message)

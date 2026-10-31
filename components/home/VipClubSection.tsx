@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/HoverPrefetchLink";
 import { Crown, MessageCircle } from "lucide-react";
 
 function InstagramIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {

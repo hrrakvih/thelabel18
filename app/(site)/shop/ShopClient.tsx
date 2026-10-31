@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { Suspense, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "@/components/HoverPrefetchLink";
 import ProductCard from "@/components/ProductCard";
 import ProductFilters from "@/components/ProductFilters";
 import { ProductWithPrice } from "@/lib/supabase/products";
 import { CategoryTree } from "@/lib/categories";
+import { filterProducts, type ProductSort } from "@/lib/product-filters";
 import { ChevronDown } from "lucide-react";
 
 const ITEMS_PER_LOAD = 40; // 8 rows × 5 columns
@@ -74,7 +76,85 @@ function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
   );
 }
 
+const isUUID = (str?: string) => !str || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
+function ShopWithFilters({
+  products,
+  categories,
+}: {
+  products: ProductWithPrice[];
+  categories: CategoryTree[];
+}) {
+  const params = useSearchParams();
+
+  const filtered = useMemo(() => {
+    // Safely parse params: if category is a string like "jewellery", try to resolve its UUID or convert to search
+    let categoryId = params.get("category") ?? undefined;
+    let search = params.get("q") ?? undefined;
+
+    if (categoryId && !isUUID(categoryId)) {
+      const foundCat = categories.find((c) => c.name.toLowerCase() === categoryId?.toLowerCase());
+      if (foundCat) {
+        categoryId = foundCat.id;
+      } else {
+        search = search ? `${search} ${categoryId}` : categoryId;
+        categoryId = undefined;
+      }
+    }
+
+    const sub = params.get("sub") ?? undefined;
+    const subsub = params.get("subsub") ?? undefined;
+    const min = params.get("min");
+    const max = params.get("max");
+    const subId = isUUID(sub) ? sub : undefined;
+    const subSubId = isUUID(subsub) ? subsub : undefined;
+
+    return {
+      categoryId,
+      subId,
+      subSubId,
+      products: filterProducts(products, {
+        categoryId,
+        subCategoryId: subId,
+        subSubCategoryId: subSubId,
+        search,
+        minPrice: min ? Number(min) : undefined,
+        maxPrice: max ? Number(max) : undefined,
+        sort: (params.get("sort") as ProductSort | null) ?? "newest",
+      }),
+    };
+  }, [params, products, categories]);
+
+  return (
+    <ShopView
+      products={filtered.products}
+      total={filtered.products.length}
+      categories={categories}
+      searchQuery={params.get("q") ?? undefined}
+      categoryId={filtered.categoryId}
+      subId={filtered.subId}
+      subSubId={filtered.subSubId}
+    />
+  );
+}
+
+// Filters are read from the URL in the browser so this page can be cached.
+// The fallback keeps the full, unfiltered grid in the page's HTML.
 export default function ShopClient({
+  products,
+  categories,
+}: {
+  products: ProductWithPrice[];
+  categories: CategoryTree[];
+}) {
+  return (
+    <Suspense fallback={<ShopView products={products} total={products.length} categories={categories} />}>
+      <ShopWithFilters products={products} categories={categories} />
+    </Suspense>
+  );
+}
+
+function ShopView({
   products,
   total,
   categories,
@@ -156,7 +236,9 @@ export default function ShopClient({
         {/* Filters Top Bar */}
         <div className="mb-6 sm:mb-8 w-full">
           <div className="rounded-2xl bg-white/90 backdrop-blur-md border border-[#D4AF37]/35 p-2 sm:p-3 shadow-[0_4px_25px_rgba(0,0,0,0.04)]">
-            <ProductFilters categories={categories} />
+            <Suspense fallback={<div className="min-h-[46px]" />}>
+              <ProductFilters categories={categories} />
+            </Suspense>
           </div>
         </div>
 

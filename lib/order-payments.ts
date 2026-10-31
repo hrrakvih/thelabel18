@@ -2,6 +2,7 @@
 // exported from there becomes a publicly callable endpoint, and this must only
 // run after a payment has been verified.
 import { revalidatePath } from 'next/cache'
+import { revalidateStorefront } from '@/lib/revalidate-storefront'
 import { getAdminSupabase } from '@/lib/supabase/admin'
 
 /**
@@ -82,6 +83,7 @@ export async function finalizePaidOrder(orderId: string, razorpayPaymentId: stri
   revalidatePath('/admin/orders')
   revalidatePath('/admin/dashboard')
   revalidatePath('/cart')
+  revalidateStorefront()
 
   return true
 }

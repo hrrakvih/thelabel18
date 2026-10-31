@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/HoverPrefetchLink";
 import Image from "next/image";
 import ExpandableCategoryDescription from "@/components/ExpandableCategoryDescription";
 import ProductCard from "@/components/ProductCard";

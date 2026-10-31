@@ -2,8 +2,8 @@
 import ReelsFeed from "@/components/ReelsFeed";
 import { getReels } from "@/lib/supabase/reels";
 
-// Always fetch fresh so new reels show up without a redeploy.
-export const dynamic = "force-dynamic";
+// Cached for an hour. Adding or deleting a reel in admin refreshes this page.
+export const revalidate = 3600;
 
 export default async function ReelsPage() {
   const reels = await getReels();

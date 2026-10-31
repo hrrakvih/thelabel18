@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Image from "next/image";
-import Link from "next/link";
+import Link from "@/components/HoverPrefetchLink";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGuestCartWishlist } from "@/contexts/GuestCartWishlistContext";

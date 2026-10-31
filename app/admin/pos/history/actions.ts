@@ -2,6 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
+import { revalidateStorefront } from '@/lib/revalidate-storefront'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -163,6 +164,7 @@ export async function exchangeOrderItem(params: {
     .eq('id', newVariation.variationId)
 
   revalidatePath('/admin/pos/history')
+  revalidateStorefront()
 
   return { success: true }
 }

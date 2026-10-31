@@ -50,6 +50,16 @@ export default function ProductFilters({
     !!maxVal ||
     sort !== "newest";
 
+  // Changing only the query string is handled in the browser, so typing in a
+  // filter doesn't refetch the page on every keystroke.
+  function navigate(url: string) {
+    if (url.split("?")[0] === pathname) {
+      window.history.pushState(null, "", url);
+    } else {
+      router.push(url);
+    }
+  }
+
   function updateParams(next: Record<string, string | null>) {
     const params = new URLSearchParams(searchParams.toString());
 
@@ -69,7 +79,7 @@ export default function ProductFilters({
         if (value) params.set(key, value);
         else params.delete(key);
       }
-      router.push(`${newPath}?${params.toString()}`);
+      navigate(`${newPath}?${params.toString()}`);
       return;
     }
 
@@ -78,7 +88,7 @@ export default function ProductFilters({
       else params.delete(key);
     }
     params.delete("page");
-    router.push(`${pathname}?${params.toString()}`);
+    navigate(`${pathname}?${params.toString()}`);
   }
 
   function clearAllFilters() {
@@ -88,7 +98,7 @@ export default function ProductFilters({
 
     // If on a specific category page (e.g. Jewellery / Clothing), reset to the base category URL
     if (initialCategoryId) {
-      router.push(`/categories/${initialCategoryId}`);
+      navigate(`/categories/${initialCategoryId}`);
       return;
     }
 
@@ -99,7 +109,7 @@ export default function ProductFilters({
     }
 
     // On /shop or other pages, stay on the current pathname without query params
-    router.push(pathname);
+    navigate(pathname);
   }
 
   const inputClass =

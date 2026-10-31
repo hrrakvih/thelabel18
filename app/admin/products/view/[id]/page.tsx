@@ -1,7 +1,7 @@
 // app/admin/products/view/[id]/page.tsx
 import { createClient } from '@supabase/supabase-js'
 import Image from 'next/image'
-import Link from 'next/link'
+import Link from '@/components/HoverPrefetchLink'
 import { ArrowLeft, ImageOff } from 'lucide-react'
 import { notFound } from 'next/navigation'
 
