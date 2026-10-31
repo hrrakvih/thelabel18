@@ -44,3 +44,7 @@ next-env.d.ts
 /public/frames-final-client-png-backup
 
 
+
+# Local credentials; never commit these files.
+/envfile
+/email and password

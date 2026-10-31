@@ -28,6 +28,7 @@ function fixture(status = 'pending') {
   const exports = {}
   vm.runInNewContext(code, { exports, require: name => {
     if (name === 'next/cache') return { revalidatePath() {} }
+    if (name === '@/lib/revalidate-storefront') return { revalidateStorefront() {} }
     if (name === '@/lib/supabase/admin') return { getAdminSupabase: () => db }
     throw new Error(name)
   } })

@@ -31,16 +31,14 @@ export type CategoryTree = {
  * empty tree after a failed fetch would be cached as a 404 or an empty menu.
  */
 export async function getCategoriesTreeOrThrow(): Promise<CategoryTree[]> {
-  const categories = await getCategoriesTree();
-  if (categories.length === 0) throw new Error("Category tree is unavailable");
-  return categories;
+  return getCategoriesTree({ throwOnError: true });
 }
 
 /**
  * Fetches the full visible category -> sub_category -> sub_sub_category tree,
  * sorted by `priority` at every level. Only rows with is_visible = true are returned.
  */
-export async function getCategoriesTree(): Promise<CategoryTree[]> {
+export async function getCategoriesTree(options: { throwOnError?: boolean } = {}): Promise<CategoryTree[]> {
   const supabase = createClient();
 
   const { data, error } = await supabase
@@ -77,6 +75,7 @@ export async function getCategoriesTree(): Promise<CategoryTree[]> {
     .order("priority", { ascending: true });
 
   if (error) {
+    if (options.throwOnError) throw error;
     console.error("Error fetching category tree:", error);
     return [];
   }

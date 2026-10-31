@@ -13,6 +13,17 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async redirects() {
+    // Keep cached pages and old links working without serving the large originals.
+    return [
+      { source: "/bannersections1.jpeg", destination: "/bannersections1.webp", permanent: true },
+      { source: "/bannersections2.png", destination: "/bannersections2.webp", permanent: true },
+      { source: "/hero_slide_1.jpeg", destination: "/hero_slide_1.webp", permanent: true },
+      { source: "/hero_slide_3.png", destination: "/hero_slide_3.webp", permanent: true },
+      { source: "/hero_slide_4_fixed.png", destination: "/hero_slide_4_fixed.webp", permanent: true },
+      { source: "/DSC06680.jpg", destination: "/DSC06680.webp", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {

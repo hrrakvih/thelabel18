@@ -54,7 +54,8 @@ export async function getProducts(filters: {
   let query = supabase
     .from("products")
     .select(CARD_FIELDS)
-    .eq("is_visible", true);
+    .eq("is_visible", true)
+    .order("created_at", { ascending: false });
 
   if (filters.categoryId) query = query.eq("category_id", filters.categoryId);
   if (filters.subCategoryId) query = query.eq("sub_category_id", filters.subCategoryId);
@@ -84,7 +85,7 @@ export async function getProducts(filters: {
     const minPrice = prices.length ? Math.min(...prices) : null;
     const maxPrice = prices.length ? Math.max(...prices) : null;
     const inStock = visibleVariations.some((v: any) => v.stock_quantity > 0);
-    return { ...p, product_variations: (p.product_variations || []).map(toCardVariation), minPrice, maxPrice, inStock };
+    return { ...p, product_variations: visibleVariations.map(toCardVariation), minPrice, maxPrice, inStock };
   });
 }
 
@@ -145,7 +146,7 @@ export async function getRelatedProducts(product: Product, limit = 15) {
     const prices = visible.map((v: any) => Number(v.price));
     return {
       ...p,
-      product_variations: (p.product_variations || []).map(toCardVariation),
+      product_variations: visible.map(toCardVariation),
       minPrice: prices.length ? Math.min(...prices) : null,
       maxPrice: prices.length ? Math.max(...prices) : null,
       inStock: visible.some((v: any) => v.stock_quantity > 0),
@@ -165,7 +166,7 @@ export async function getRelatedProducts(product: Product, limit = 15) {
   // ── Step 1: fetch from same subcategory (if product has one) ──
   let primaryResults: any[] = [];
   if (product.sub_category_id) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("products")
       .select(selectFields)
       .eq("is_visible", true)
@@ -173,6 +174,7 @@ export async function getRelatedProducts(product: Product, limit = 15) {
       .eq("sub_category_id", product.sub_category_id)
       .limit(limit * 3);
 
+    if (error) throw error;
     primaryResults = filterVisible(data ?? []).slice(0, limit);
   }
 
@@ -195,7 +197,8 @@ export async function getRelatedProducts(product: Product, limit = 15) {
       fallbackQuery = fallbackQuery.neq("id", id);
     }
 
-    const { data: fallbackData } = await fallbackQuery;
+    const { data: fallbackData, error } = await fallbackQuery;
+    if (error) throw error;
     fallbackResults = filterVisible(fallbackData ?? []).slice(0, needed);
   }
 

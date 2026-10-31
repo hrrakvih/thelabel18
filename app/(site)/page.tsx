@@ -43,7 +43,7 @@ export default function Home() {
 
         if (rawProducts.data) {
           const formatted: ProductWithPrice[] = rawProducts.data.map((p) => {
-            const variations = p.product_variations || [];
+            const variations = (p.product_variations || []).filter((v) => v.is_visible !== false);
             const validPrices = variations
               .filter((v) => v.is_visible !== false && v.price != null)
               .map((v) => Number(v.price));
@@ -54,6 +54,7 @@ export default function Home() {
 
             return {
               ...p,
+              product_variations: variations,
               description: null, // Cards do not render product descriptions.
               minPrice,
               maxPrice,
