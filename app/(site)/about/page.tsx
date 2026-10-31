@@ -276,7 +276,7 @@ export default function AboutUs() {
                 <div className="absolute bottom-0 right-0 w-[56%] aspect-[4/5] bg-white p-2 pb-6 shadow-[0_20px_45px_-10px_rgba(0,0,0,0.35)] rotate-5 z-20 border border-neutral-200">
                   <div className="relative w-full h-full overflow-hidden bg-[#1A1A1A]">
                     <Image
-                      src="/DSC06680.jpg"
+                      src="/DSC06680.webp"
                       alt="Priyanka & Harish - Founders of The Label 18"
                       fill
                       sizes="(max-width: 1024px) 56vw, 18vw"

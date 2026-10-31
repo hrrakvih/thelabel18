@@ -2,7 +2,9 @@
 
 The generated image variants were removed at the user's request. The `public/optimized/` folder, custom loader, manifest, generator and prebuild/predev hooks have been removed. Development and builds no longer recreate image variants.
 
-All 16 source images remain in `public/`. Next Image serves source URLs directly with `unoptimized: true`, avoiding runtime optimizer usage. The earlier 94.4% generated-image savings no longer apply to these source downloads.
+Next Image serves source URLs in `public/` directly with `unoptimized: true`, avoiding runtime optimizer usage. The earlier 94.4% generated-image savings no longer apply to these source downloads.
+
+The five hero banners and `DSC06680` were replaced once by hand with WebP (quality 90; hero 2560px wide, `DSC06680` 1400px wide), and `logo.jpg` was resized to 256px, reducing those six WebP sources from 31.12 MB to 2.54 MB. There is no build step; replacement banners should be exported the same way before being added to `public/`.
 
 Remaining optimizations:
 
