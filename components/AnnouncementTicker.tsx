@@ -1,18 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { createClient } from "@/lib/supabase/client";
 
 export default function AnnouncementTicker() {
   const [items, setItems] = useState<string[]>([]);
 
   useEffect(() => {
-    supabase
+    createClient()
       .from("announcements")
       .select("text")
       .eq("is_active", true)

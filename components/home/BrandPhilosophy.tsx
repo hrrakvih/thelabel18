@@ -8,8 +8,8 @@ const highlights = [
   },
   {
     icon: Globe,
-    title: "Free Shipping",
-    desc: "Free delivery on all orders across India",
+    title: "Pan-India Delivery",
+    desc: "Shipping charges calculated by PIN code at checkout",
   },
   {
     icon: Shield,

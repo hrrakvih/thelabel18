@@ -189,7 +189,7 @@ export default function ProductVariantSelector({
           )}
         </div>
         <p className="mt-1.5 text-[10px] font-outfit text-[#1A1A1A]/40 tracking-[0.15em] uppercase">
-          Inclusive of all taxes • Free shipping
+          Inclusive of all taxes • Shipping calculated at checkout
         </p>
       </div>
 
@@ -346,7 +346,7 @@ export default function ProductVariantSelector({
       {/* ── Trust Badges ── */}
       <div className="pt-5 grid grid-cols-3 gap-2">
         {[
-          { icon: Truck, label: "Free Shipping" },
+          { icon: Truck, label: "Secure Delivery" },
           { icon: BadgeCheck, label: "100% Authentic" },
           { icon: BadgeCheck, label: "Certified Genuine" },
         ].map(({ icon: Icon, label }) => (
